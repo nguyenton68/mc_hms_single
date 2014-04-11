@@ -1,0 +1,8 @@
+! hms_magnets.cmn
+
+! ... where do we loose events?
+         
+		real*8 q1cor,q2cor,q3cor,dcor
+
+            common /hms_magnets/q1cor,q2cor,q3cor,dcor
+
