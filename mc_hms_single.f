@@ -16,6 +16,10 @@ C+______________________________________________________________________________
 !  06-MAR-2008  (Anusha) Modified the codes to use the target field corrections.
 !               Used the subroutine trgInit.f to call the target field map and 
 !               another couple of subroutines in the mc_hms.f.
+! 21-Oct-2014    Nguyen Ton rearrange the code with adding of rate calculation
+!                using F1F2IN and NMC_org for the rate with Born part. 
+!                Also included the radiative correction code CALL external() 
+!                subroutine
 C-______________________________________________________________________________
 
         implicit none
@@ -58,7 +62,7 @@ C Local declarations.
 
         logical*4 iss
         integer*4       map
-c	character*17 trg_field_map /'trg_field_map.dat'/
+
         real*8 theta_e,theta_p,phi_e,phi_p
 	real*8 th_deg_rad
 ! for xsection:
@@ -70,48 +74,10 @@ c	character*17 trg_field_map /'trg_field_map.dat'/
 	real*8 x_w1, x_w2,w1_nmc,w2_nmc,x_tanSq, x_mott,x_barn,x_alpha
 	real*8 rateF1F2,rateNMC,x_sigma1,x_sigma2
         real x_sigma3,raterad
-!        real*8 sigma_born,sigma_corr,rateCorr
-!        real total
 	real*8 p_accept, th_accept, ph_accept
 	parameter(x_alpha = 7.3e-3)
 	parameter(x_barn  = 0.389e6)!(1/GeV)**2=0.389e-3 barn
-! for rad correction
 
-! change E_beam-> e0set        real*8 E_beam
-c$$$        common /set/ e0set,epset,ethset
-c$$$        real ethset,e0set,epset
-c$$$        data E_beam,Z_target,A_target/11.,2,3/
-c$$$        common /kin/  ee0,eep,eth_deg,eth_rad,ex_b_j,eQSQ,eps,eWsq,
-c$$$     > ey,enu, esin2
-c$$$        real ee0,eep,eth_deg,eth_rad,ex_b_j,eqsq,eps,ewsq,ey,enu,esin2
-c$$$        common /omg/ delta,r_com
-c$$$        data delta/0.01/
-c$$$        real delta,r_com
-c$$$!        common /rad/ eta,b_com,ax0,ba,ax0a,atbx0,atax0,tb,ta,btbi,
-c$$$!     > btai,btb,bta,tbefor,tbal,tafter,taal
-c$$$!        real eta,b_com,ax0,ba,ax0a,atbx0,atax0,tb,ta,btbi,
-c$$$!     > btai,btb,bta,tbefor,tbal,tafter,taal
-c$$$        common /trl/ ttarg,twall,tbeam,tspec,itarg,nseg,jtarg
-c$$$        real ttarg,twall,tbeam,tspec
-c$$$        integer itarg,nseg,jtarg
-c$$$        data itarg,nseg,jtarg/1,4,2/ !don't know itarg
-c$$$        data ttarg,twall,tbeam,tspec/0.00133,0.0185,0.008,0.096/
-c$$$!ttarg=0.00133,twall=0.0185,tbeam=0.008,tspec=0.096
-c$$$        common /targt/ ez,ea,avgn,avga,avgm,amum
-c$$$        integer ez,ea
-c$$$        real avgn,avga,avgm,amum
-c$$$        data avgn,avga,avgm,amum/1.,3.,2.8094,3./
-c$$$        common /ikk12/ ig,idut,inel_model,pauli_model,nuc_method,
-c$$$     > nuc_model
-c$$$        integer ig,idut,inel_model,pauli_model,nuc_method,nuc_model
-c$$$!IG: elastic nucleon form factor model
-c$$$! inel_model=rrdd=resonance+dis= 1133 1=ineft, 3=f2nmc95
-c$$$      data ig,idut,inel_model,pauli_model,nuc_method,nuc_model
-c$$$     > /15,13,1133,4,1,1/
-c$$$      common /ttype/ etarget
-c$$$      character*7 etarget
-c$$$!      common /sig/ cstype
-c$$$!      character*1 cstype
 C Histogram defining parameters.
         integer*4 ix,iy,iz,it           !Indices
         integer*4 h_nx,h_ny,h_nz,h_nt   !Number of dp/p,theta,phi,ytar bins
@@ -210,11 +176,7 @@ C Function definitions.
         ntp_ext = '.rzdat'
         out_ext = '.dat'
 
-
-
-
 C ================================ Executable Code =============================
-       
         xoff = 0.0d0
         yoff = 0.0d0
         zoff = 0.0d0       
@@ -242,13 +204,12 @@ C Initialize
         where = 0
 
         firsttime = .true.
-!        print*,' 1st appear ',firsttime
+
 c Adjust the beam_offset on the target X direction
-C       beam_offset = 0.5
+
         beam_offset = 0.0
+
 C Open setup file.
-
-
         write(6,*)'Give the name of the input file 
      > without extension (will be same for the output) '
         read(5,1968)read_name
@@ -259,8 +220,6 @@ C Open setup file.
      > //inp_ext
         write(6,*)'input file = ',inp_name
         open (unit=chan,status='old',file=inp_name)
-*       open (unit=10,status='old',name='c_kin.dat')
-*	open (unit=chan,status='old',name='mc_hms.inp')
 
 C Strip off header
 ! N_TRIALS:
@@ -307,11 +266,7 @@ c	read (chan,*) p_spec
           if (.not.iss) stop 'ERROR (M.C. limits) in setup!'
            gen_lim_up(i) = gen_lim(i)
          enddo
-!         do i=1,3
-!	   write(6,*)'gen_lim_up/down = ',gen_lim_up(i),' '
-!     >	,gen_lim_down(i)
-!          enddo
-*
+
         do i = 4,6
          read (chan,1001) str_line
           write(6,*) str_line(1:last_char(str_line))
@@ -371,43 +326,29 @@ c	read (chan,*) p_spec
 
         read(chan,*) p_flag
         write(6,*) p_flag
-cc	read (chan,1001) str_line
-cc	write(6,*) str_line(1:last_char(str_line))
-cc	if (.not.rd_int(str_line,p_flag)) stop 'ERROR: p_flag in setup file!'
+
 
 ! Read in flag for multiple scattering.
 
         read(chan,*) tmp_int
-cc	read (chan,1001) str_line
-cc	write(6,*) str_line(1:last_char(str_line))
-cc if (.not.rd_int(str_line,tmp_int)) stop 'ERROR: ms_flag in setup file!'
         if (tmp_int.eq.1) ms_flag = .true.
         write(6,*) ms_flag, "    =   Do multiple scattering:"
 
 ! Read in flag for wire chamber smearing.
 
         read(chan,*) tmp_int
-cc	read (chan,1001) str_line
-cc	write(6,*) str_line(1:last_char(str_line))
-cc	if (.not.rd_int(str_line,tmp_int)) stop 'ERROR: wcs_flag in setup file!'
         if (tmp_int.eq.1) wcs_flag = .true.
         write(6,*)  wcs_flag, "    =   Do wirechamber smearing?  "
 
 ! Read in flag FIT_REVERSE.
         
         read(chan,*) tmp_int
-cc	read (chan,1001) str_line
-cc	write(6,*) str_line(1:last_char(str_line))
-cc	if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:fit_reverse in setup file!'
         if (tmp_int.eq.1) fit_reverse = .true.
         write(6,*)  fit_reverse,"    =   Fit reverse matrix elements?  "
 
 ! Read in flag for init/recon values.
 
         read(chan,*) tmp_int
-cc	read (chan,1001) str_line
-cc	write(6,*) str_line(1:last_char(str_line))
-cc	if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:init_flag in setup file!'
         if (tmp_int.eq.1) then
           init_flag = .true.
           ttl_indx = 1
@@ -421,17 +362,14 @@ cc	if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:init_flag in setup file!'
 
         read(chan,*) tmp_int
         read (chan,1001) str_line
-cc  write(6,*) str_line(1:last_char(str_line))
-cc if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:topd_flag in setup file!'
+
         if (tmp_int.eq.1) topd_flag = .true.
         write(6,*) topd_flag   
 
 ! Read in flag for HUT NTUPLE output.
 
         read(chan,*) tmp_int
-cc read (chan,1001) str_line
-cc write(6,*) str_line(1:last_char(str_line))
-cc if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:hut_ntuple in setup file!'
+
         if (tmp_int.eq.1) hut_ntuple = .true.
         write(6,*) hut_ntuple,"    =   output Hut ntuple"
 * 
@@ -443,20 +381,13 @@ cc if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:hut_ntuple in setup file!'
 
 
         tmp_int = 1
-cc       read(chan,*) tmp_int
-cc read (chan,1001) str_line
-cc write(6,*) str_line(1:last_char(str_line))
-cc if (.not.rd_int(str_line,tmp_int)) stop
-cc 1    'ERROR:dump_all_in_ntuple in setup file!'
+
         if (tmp_int.eq.1) dump_all_in_ntuple = .true.
         write(6,*) dump_all_in_ntuple, " =   Dumping all events?"
 
 ! Read in flag for doing sieve slit run.
 
         read(chan,*) tmp_int
-cc read (chan,1001) str_line
-cc write(6,*) str_line(1:last_char(str_line))
-cc if (.not.rd_int(str_line,tmp_int)) stop 'ERROR:hut_ntuple in setup file!'
         if (tmp_int.eq.1) dosieve = .true.
         write(6,*) dosieve,"    =   Sieve Slit run? "
 !!    SIEVE slit
@@ -524,8 +455,6 @@ CCCCCCCC       Beam position and target offsets         CCCCCCCCC
         write(6,*) 'using the targ. mag. field',fieldon
        
 
-**********
-!        print*,' 2nd appear ',firsttime
         theta_lab=th_spec*degrad
         sry_off=yoff
         srx_off=xoff !beam right
@@ -564,8 +493,7 @@ C Initialize HBOOK/NTUPLE if used.
          call hlimit(pawc_size)
          ntp_name = 'worksim/'//read_name(1:last_char(read_name))
      > //ntp_ext
-c	iquest(10)=65000
-c        call hropen(30,'HUT',ntp_name,'NQ',4096,i)
+
           call hropen(30,'HUT',ntp_name,'N',1024,i)  !!  MEC  
         if (i.ne.0) then
            write(6,*),'HROPEN error: istat = ',i
@@ -574,19 +502,14 @@ c        call hropen(30,'HUT',ntp_name,'NQ',4096,i)
          call hbookn(1,'HUT NTUPLE',28,'HUT',1000,hut_nt_names)
         endif
 C Output results.
-c write(*,*)'Give name of the output file'
-c read(*,1968)my_name
+
 
          my_name = 'outfiles/'//read_name(1:last_char(read_name))
      > //out_ext
 C------------------------------------------------------------------------------C
 C                           Top of Monte-Carlo loop                            C
 C------------------------------------------------------------------------------C
-!	E_beam = 11. !GeV
-!	A_target = 3.0
-!	Z_target = 2.0
-!        nminp=100000.
-!        nmaxp=-100000.
+
 
         if(dump_all_in_ntuple) then 
          write(6,*) "Dumping all events to ntuple"
@@ -594,18 +517,14 @@ C------------------------------------------------------------------------------C
          write(6,*) "Only dumping good events to ntuple"
         endif
 
-c        stime = 1.
-c	stime = secnds(0.)
 
-!        print*,' 3rd appear ',firsttime
         first_time_hms = .true.
         firsttime = .true.
 
         if(spect.eq.-1) then ! electron beam left is negative
          theta_e = (th_spec*degrad)+80  ! perpendicular mag. field
          phi_e=180                      ! perpendicular mag. field
-c    theta_e = 180 - (th_spec*degrad)! parallel mag. field
-c    phi_e=0                         ! parallel mag. field
+
            theta_p = 0
          phi_p=0
         elseif(spect.eq.1) then ! proton
@@ -622,15 +541,11 @@ c    phi_e=0                         ! parallel mag. field
            write(*,*) 'theta_e,phi_e',theta_e,phi_e
         call trgInit(map,theta_e,phi_e,theta_p,phi_p) 
        endif
-*************************************************************************
-cc	p_spec_offset = -0.13 
-c	p_spec = p_spec * ( 1. + p_spec_offset / 100. )
+
 
         do trial = 1,n_trials
 
-c       if(first_time_hms) write(6,*) first_time_hms
-c          if(firsttime) write(6,*) firsttime
-        
+
 * G.&I.N.
 * reset the fail id
           where=0.d0
@@ -647,9 +562,6 @@ C Units are cm.
 
           x = gauss1(3.0d0)*0.003 ! intrinsic beam width
           y = gauss1(3.0d0)*0.003                        ! intrinsic beam height
-
-c  x = gauss1(3.0d0)                        ! intrinsic beam width
-c          y = gauss1(3.0d0)                        ! intrinsic beam height
 
 
 CCCCC     Include  rastering - MEC     CCCCC
@@ -685,13 +597,7 @@ c     r = grnd()*gen_lim(4)
            t7=r*cos(th)
             t8=r*sin(th)
      
-c      x = x + t5+t7                  
-c      y = y + t6+t8 
-c      x = x + xoff ! +beam_offset	!! X-beam (horizontal) +x is beam left  !! 
-c      y = y + yoff	!! Y-beam (vertical)   +y is beam up     !!
- 
-c      x = x + t7                  
-c      y = y + t8 
+
          x = t7                  
          y = t8 
          yrecs=t8 + yoff
@@ -699,8 +605,7 @@ c      y = y + t8
           y = t8 + yoff+yf                       !! +y is pointing up  !! 
 
           endif
-c   open(2,file='raster.dat',status='unknown')
-c   write (2,*) t7,xoff,x,t8,yoff,y
+
 
 
 
@@ -716,9 +621,6 @@ CCCCC        End rastering stuff        CCCCC
           if(.not.dummy_tar.AND.gen_lim(6).LE.3.0d0)  !!  If less than 3cm then assume solid target !!
      &             solid_tar = .true. 
 CCCCC    Solid Target was rotated by 20.3 deg for E99-118   CCCCC
-
-
-c          rotang = 20.3*pi/180.0d0
 
           rotang = 0.0d0  
 
@@ -736,10 +638,10 @@ c          rotang = 20.3*pi/180.0d0
           else 
            zt = (1.0d0*grnd()-0.50)*gen_lim(6)          
            z = zt + zoff
-!           print *,'zoff=',zoff
+
           endif
 
-c          write(6,*) (z/gen_lim(6))
+
 
 
 ***    The factor cos(rotang)  takes into                     ***
@@ -749,7 +651,7 @@ c          write(6,*) (z/gen_lim(6))
 ***    walks with x beam.                                     ***
 
 
-c       write(6,*) trial,x,y,z
+
 
 C Pick scattering angles and DPP from independent, uniform distributions.
 C dxdz and dydz in HMS TRANSPORT coordinates.
@@ -757,13 +659,12 @@ C dxdz and dydz in HMS TRANSPORT coordinates.
 
          dpp  = grnd()*(gen_lim_up(1)-gen_lim_down(1))
      &             + gen_lim_down(1)
-C         print *,'dpp=',dpp
+
 
 
           dydz = (grnd()*(gen_lim_up(2)-gen_lim_down(2))/1000.
      &           + gen_lim_down(2)/1000.)
-!      if(dydz.lt.nminp) nminp=dydz
-!      if(dydz.gt.nmaxp) nmaxp=dydz
+
           dxdz = grnd()*(gen_lim_up(3)-gen_lim_down(3))
      &          /1000.   + gen_lim_down(3)/1000.
 
@@ -780,22 +681,16 @@ c    and +x should be beam left
           ys    = -(x * cos_ts) + z * sin_ts
           zs    = z * cos_ts - x * sin_ts
 
-c          write(6,*) "1: ",ys
+
          ys = ys - hms_mispoint(th_spec*degrad)              !!  include hms mispointing  !!
 
-c          write(6,*) "2: ",ys
          dpps  = dpp
          dxdzs = dxdz
           dydzs = dydz
-c  write(*,*) 'theta corr',dxdzs,dydzs,dydzs - (0.025*dxdzs)
-c  dydzs = dydzs + (0.025*dxdzs)
 
           xs_init = xs
           ys_init = ys
           zs_init = zs
-c   write(*,*) ' xs = ',xs
-c   write(*,*) ' ys = ',ys
-c  write(*,*) ' zs = ',zs
 
 C Save init values for later.
          xtar_init = x
@@ -804,7 +699,7 @@ C Save init values for later.
          dpp_init = dpp
           dth_init = dydzs*1000. !mr
          dph_init = dxdzs*1000. !mr
-!         print*,' random ',dpp,' s ',dpps,' nutple ',dpp_init
+
 C Calculate multiple scattering length of target
          cos_ev = (cos_ts+dydzs*sin_ts)/sqrt(1+dydzs**2+dxdzs**2)
          th_ev = acos(cos_ev)
@@ -873,11 +768,11 @@ c
            xs = xs - zs * dxdzs
           ys = ys - zs * dydzs
              zs = 0.0d00
-c     write(*,*) 'before go through the detec',ok_hms
+
           call mc_hms(p_spec,th_spec,dpps,xs,ys,zs,dxdzs,dydzs,
      >x_fp,dx_fp,y_fp,dy_fp,musc_targ_len,m2,cos_ts,
      >sin_ts,spect,ms_flag,wcs_flag,.false.,resmult,y,x,ok_hms)
-c    write(*,*) 'after go through the detec',ok_hms
+
           endif
 * G.&I.N. modified...
 *
@@ -890,26 +785,9 @@ c          write(6,*) ' after call mc_hms'
 
              ytar_recon = ys
             ztar_recon = (ytar_recon*cos_ts+xtar_init)
-     >                /tan(th_spec-dth_recon)+ytar_recon*sin_ts
+     >                /tan(th_spec-dydzs)+ytar_recon*sin_ts
 
 !=================== cross section =============================!
-!
-!!!!!!!!!!!!xsection
-! initialize beam value
-c       etarget='he3'
-c       ez=Z_target
-c       ea=A_target
-c
-c       e0set= E_beam
-c       epset= p_scattered
-c       ee0=e0set
-c       eep = p_scattered
-c       ethset = th_ev*degrad     !deg
-c       eth_deg = ethset
-c       eth_rad = th_ev
-
-
-
        E_beam=11.
        Z_target=2.
        A_target=3.
@@ -917,25 +795,11 @@ c       eth_rad = th_ev
        theta_deg=th_ev*degrad
        th_2 = th_ev/2.
        x_mp= sqrt(mp2)/1000.
-c       esin2 = sin(th_2)*sin(th_2)
        nu = E_beam - p_scattered
-c       enu=nu
        q2dis = 4*E_beam*p_scattered*sin(th_2)*sin(th_2)
-c       eqsq=qsq
        Wsq = x_mp*x_mp + 2*x_mp*nu - q2dis
-c       ewsq=wsq
        x_b_j = q2dis/(2.*x_mp*nu)
-c       ex_b_j=x_b_j
-c       ey = nu/E_beam
-c       eps   = 1./( 1.+2.*esin2/(1.-esin2)*(1.+q2dis/(2.*x_mp*
-c     > x_b_j)**2))   
-
        x_tanSq = tan(th_2)**2
-
-
-
-
-
 ! acceptance
 	    p_accept = (gen_lim_up(1)+abs(gen_lim_down(1)))/100. 
 	    th_accept = (gen_lim_up(2)+abs(gen_lim_down(2)))/1000.  !rad
@@ -962,23 +826,9 @@ c     > x_b_j)**2))
                x_sigma2 = x_mott*(w2_nmc + 2*w1_nmc*x_tanSq)
 
 !! rad correction
-!           call SECNUCLW(E_beam,p_scattered,th_ev,sigma_born)
-!           print*,' born ',sigma_born
-c$$$               print *,'set:',E_beam,epset,ethset
-c$$$               print *,'kin:',ee0,eep,eth_deg,eth_rad,ex_b_j,eQSQ,eps,
-c$$$     >  eWsq, ey,enu,esin2
-        
-!        print*,' kin in main=',E_beam,p_scattered,theta_deg
-!        call externals(E_beam,p_scattered,theta_deg,x_sigma3)
-                
-!         print*,' f1f2=',x_sigma1,' nmc=',x_sigma2,x_sigma3
-         
-!           call QUASIY8(E_beam,p_scattered,th_ev,sigma_corr)
-!             x_sigma3= sigma_born + sigma_corr
-!           print*,' x correction ',x_sigma3
 
-
-
+        call externals(E_beam,p_scattered,theta_deg,x_sigma3)
+ 
 !		  xsection [nb/GeV*sr]
 !!! thickness =60cm, current = 60uA, density = 12amg
 		  rateF1F2 = x_sigma1*p_spec*p_accept*th_accept*ph_accept
@@ -987,15 +837,9 @@ c$$$     >  eWsq, ey,enu,esin2
 		  rateNMC = x_sigma2*p_spec*p_accept*th_accept*ph_accept
      > *12*2.686e25*1e-37*60e-6*gen_lim(6)/100./(1.6*1e-19*n_trials)
 
-!		  raterad = x_sigma3*p_spec*p_accept*th_accept*ph_accept
-!     > *12*2.686e25*1e-37*60e-6*gen_lim(6)/100./(1.6*1e-19*n_trials)
+		  raterad = x_sigma3*p_spec*p_accept*th_accept*ph_accept
+     > *12*2.686e25*1e-37*60e-6*gen_lim(6)/100./(1.6*1e-19*n_trials)
 
-!          print*,' 1=',ratef1f2,' 2=',ratenmc,' 3=',raterad
-!		  print*,' mott ',x_mott
-!
-!		  print*,' rate -------', rate,' x ',x_sigma,' x_b ',x_b_j
-!                  print*,' p_accept ',p_accept,' th_acc ',th_accept,
-!     > ' phi ',ph_accept,' tar len ',gen_lim(6)
 
 C Output NTUPLE entry.
 
@@ -1022,10 +866,10 @@ C Output NTUPLE entry.
              hut(19)= y   
              hut(20)= x_sigma1  !xsec F1F2
              hut(21)= x_sigma2  !xsec nmc
-             hut(22)=1! x_sigma3  !xsec rad correction
+             hut(22)= x_sigma3  !xsec rad correction
              hut(23)= ratef1f2
              hut(24)= rateNMC
-             hut(25)=1! raterad
+             hut(25)=  raterad
              hut(26)= Wsq
              hut(27)= q2dis
              hut(28)= x_b_j 
@@ -1104,13 +948,6 @@ c write(6,*) '1 event is over'
 C------------------------------------------------------------------------------C
 C                           End of Monte-Carlo loop                            C
 C------------------------------------------------------------------------------C
-!          print*,' minp ',nminp,' max ',nmaxp
-
-C        etime = 1
-
-c	etime = secnds(stime)
-c	type *,'Elapsed time = ',etime,' seconds'
-c	type *,' '
 
 C Close NTUPLE file.
 
@@ -1119,20 +956,16 @@ C Close NTUPLE file.
 *
 * G.&I.N. added
 *
-c open (unit=chan,status='unknown',name=my_name,
-c     >	carriagecontrol='list')
+
 
         open (unit=chan,status='unknown',file=my_name)
 
-* open (unit=chan,status='unknown',name='mc_hms.out',
-*     >		carriagecontrol='list')
+
 
         write (chan,1002)
         write (chan,1003) p_spec,th_spec*degrad
 
-!inp write (chan,1004) (gen_lim(i),i=1,6),
-!inp     >	dpp_hist,dth_hist,dph_hist,h_xl,h_yl,h_zl,h_dx,h_dy,h_dz,
-!inp     >  h_nx,h_ny,h_nz,h_entr,v_entr
+
         write (chan,1004) (gen_lim(i),i=1,6),
      >dpp_hist,dth_hist,dph_hist,h_xl,h_yl,h_zl,h_dx,h_dy,h_dz,
      > h_nx,h_ny,h_nz
@@ -1163,21 +996,13 @@ C Compute reconstruction resolutions.
 
 C Histogram dumps.
 
-C$$$write (chan,1007) 'DPP-DTH'
-C$$$write (chan,1008) ((cnts_pth(i,j),i=1,h_nx),j=1,h_ny)
-C$$$write (chan,1007) 'DPP-PHI'
-C$$$write (chan,1008) ((cnts_pphi(i,j),i=1,h_nx),j=1,h_nz)
-C$$$write (chan,1007) 'DTH-PHI'
-C$$$write (chan,1008) ((cnts_thphi(i,j),i=1,h_ny),j=1,h_nz)
-!!!write (chan,1007) 'DPP-DTH-DPH'
-!!!write (chan,1012) (((cnts_pthph(i,j,k),i=1,h_nx),j=1,h_ny),k=1,h_nz)
+
          close (unit=chan)
 
 C Topdrawer plotfile output.
 
         if (topd_flag) then
-c       open (unit=chan,status='unknown',name='mc_hms.top',
-c     >		carriagecontrol='list')  
+ 
          open (unit=chan,status='unknown',file='mc_hms.top')
           write (chan,*)'set font duplex'
 
